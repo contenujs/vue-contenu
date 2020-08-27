@@ -1,8 +1,8 @@
 /* eslint-disable */
-import Vue from "vue";
 
 class EventHandler {
   init = false;
+  newFieldRequested = false;
   eventQueue = [];
   initializeMessageListener() {
     window.addEventListener(
@@ -28,8 +28,7 @@ class EventHandler {
           IFrameInitializer.contenuIframe.style.width = "100%";
           break;
         case "newFields":
-          //this.requestNewFields();
-
+          this.newFieldRequested = true;
           this.requestNewFields(Parser.compare(Contenu.props, Contenu.res));
           break;
         case "cssRules":
@@ -82,7 +81,7 @@ class Parser {
           result[key]["__path"]
         );
       } else {
-        Vue.set(result, key, obj1[key]);
+        set(result, key, obj1[key]);
       }
     }
     return result;
@@ -111,7 +110,7 @@ class Parser {
 
 class IFrameInitializer {
   static contenuIframe = null;
-  constructor(serverUrl) {
+  constructor(serverUrl, key) {
     IFrameInitializer.contenuIframe = document.createElement("iframe");
     IFrameInitializer.contenuIframe.setAttribute("id", "contenuWidget");
     IFrameInitializer.contenuIframe.setAttribute(
@@ -124,10 +123,18 @@ class IFrameInitializer {
         "overflow: hidden"
       ].join(";")
     );
-    IFrameInitializer.contenuIframe.setAttribute("src", serverUrl);
+    IFrameInitializer.contenuIframe.setAttribute(
+      "src",
+      serverUrl + "?key=" + key
+    );
   }
   mount(doc) {
     doc.appendChild(IFrameInitializer.contenuIframe);
+  }
+  remove() {
+    IFrameInitializer.contenuIframe.parentNode.removeChild(
+      IFrameInitializer.contenuIframe
+    );
   }
 }
 
@@ -137,26 +144,44 @@ class Contenu {
   static res = {};
   loaded = false;
   iFrame = null;
-  handler = null;
+  key = "/";
+  static handler = null;
+  fetchDataAddress = "";
   constructor(options) {
     this.serverUrl = options.serverAddress;
-    Vue.observable(Contenu.data);
-    this.handler = new EventHandler();
-    this.handler.initializeMessageListener();
-    this.fetchDataFromServer(options.fetchDataAddress || "/api/data");
-    this.initIFrame();
+    this.fetchDataAddress = options.fetchDataAddress || "/api/data";
+    Contenu.handler = new EventHandler();
+    Contenu.handler.initializeMessageListener();
     return this;
   }
-  initIFrame() {
-    this.iFrame = new IFrameInitializer(this.serverUrl);
+  start() {
+    Contenu.props = {};
+    Contenu.data = {};
+    observable(Contenu.data);
+    if (this.iFrame) this.iFrame.remove();
+    this.fetchDataFromServer();
+    this.initIFrame(this.key);
+  }
+  setKey(key) {
+    this.key = key;
+    Contenu.props = {};
+    Contenu.data = {};
+    observable(Contenu.data);
+    if (this.iFrame) this.iFrame.remove();
+    this.fetchDataFromServer();
+    this.initIFrame(this.key);
+  }
+  initIFrame(key) {
+    this.iFrame = new IFrameInitializer(this.serverUrl, key);
     this.iFrame.mount(document.getElementsByTagName("body")[0]);
   }
-  fetchDataFromServer(fetchDataAddress) {
-    fetch(this.serverUrl + fetchDataAddress)
+  fetchDataFromServer() {
+    console.log(this.serverUrl + this.fetchDataAddress + "?key=" + this.key);
+    fetch(this.serverUrl + this.fetchDataAddress + "?key=" + this.key)
       .then(response => response.json())
       .then(res => {
-        Parser.parse(res, Contenu.props, Contenu.data);
-        Contenu.res = res;
+        Parser.parse(res.content, Contenu.props, Contenu.data);
+        Contenu.res = res.content;
         this.loaded = true;
       })
       .catch(error =>
@@ -204,14 +229,16 @@ let makeProxy = (data, props) => {
         return makeProxy(target[prop], props[prop]);
       } catch (err) {
         if (prop === "__value") {
-          if (typeof target.__value !== "undefined") return target.__value;
+          if (typeof target.__value !== "undefined") {
+            return target.__value;
+          }
           if (typeof target === "object" && Object.keys(target).length == 0)
             return null;
           return target;
         }
         if (typeof target[prop] === "string") {
           delete target.__value;
-          Vue.set(target, prop, {
+          set(target, prop, {
             __value: target[prop],
             __path: target.__path + "." + prop,
             parse: () => {
@@ -224,11 +251,15 @@ let makeProxy = (data, props) => {
           });
         } else {
           if (typeof props[prop] === "undefined") {
-            // console.log("new Prop", target.__path + "." + prop);
+            // request for new field
+
             props[prop] = {};
             delete target.__value;
+            Contenu.handler.requestNewFields(
+              Parser.compare(Contenu.props, Contenu.res)
+            );
           }
-          Vue.set(target, prop, {
+          set(target, prop, {
             __value: "",
             __path: target.__path + "." + prop,
             parse: () => {
@@ -245,10 +276,23 @@ let makeProxy = (data, props) => {
     }
   });
 };
-
+var set;
+var observable;
 export default {
   install(Vue, options) {
+    set = Vue.set;
+    observable = Vue.observable;
     window.$contenu = new Contenu(options);
-    Vue.prototype.$contenu = makeProxy(Contenu.data, Contenu.props);
+
+    if (options.router) {
+      options.router.beforeEach((to, from, next) => {
+        window.$contenu.setKey(to.path);
+        Vue.prototype.$contenu = makeProxy(Contenu.data, Contenu.props);
+        next();
+      });
+    } else {
+      window.$contenu.start();
+      Vue.prototype.$contenu = makeProxy(Contenu.data, Contenu.props);
+    }
   }
 };

@@ -1,5 +1,5 @@
 {
-  "name": "vue-contenu-client",
+  "name": "vue-contenu",
   "version": "0.0.1",
   "description": "Contenu client library for Vuejs apps",
   "main": "contenu.js",
@@ -8,15 +8,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/contenujs/vue-contenu-client.git"
+    "url": "git+https://github.com/contenujs/vue-contenu"
   },
   "author": "",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/contenujs/vue-contenu-client/issues"
   },
-  "homepage": "https://github.com/contenujs/vue-contenu-client#readme",
-  "dependencies": {
-    "vue": "^2.6.11"
-  }
+  "homepage": "https://github.com/contenujs/vue-contenu#readme",
+  "dependencies": {}
 }
