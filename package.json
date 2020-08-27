@@ -1,10 +1,10 @@
 {
   "name": "vue-contenu",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Contenu client library for Vuejs apps",
-  "main": "contenu.js",
+  "main": "build/contenu.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "babel contenu.js -d build"
   },
   "repository": {
     "type": "git",
@@ -16,5 +16,10 @@
     "url": "https://github.com/contenujs/vue-contenu-client/issues"
   },
   "homepage": "https://github.com/contenujs/vue-contenu#readme",
-  "dependencies": {}
+  "devDependencies": {
+    "@babel/cli": "^7.10.5",
+    "@babel/core": "^7.11.4",
+    "@babel/plugin-proposal-class-properties": "^7.10.4",
+    "babel-preset-env": "^1.7.0"
+  }
 }
