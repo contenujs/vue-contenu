@@ -1,6 +1,6 @@
 {
   "name": "vue-contenu",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Contenu client library for Vuejs apps",
   "main": "build/contenu.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/contenujs/vue-contenu-client/issues"
+    "url": "https://github.com/contenujs/vue-contenu/issues"
   },
   "homepage": "https://github.com/contenujs/vue-contenu#readme",
   "devDependencies": {

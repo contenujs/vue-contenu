@@ -29,7 +29,8 @@ class EventHandler {
           break;
         case "newFields":
           this.newFieldRequested = true;
-          this.requestNewFields(Parser.compare(Contenu.props, Contenu.res));
+          this.requestNewFields(Parser.compare(Contenu.data, Contenu.res));
+          Contenu.res = JSON.parse(JSON.stringify(Contenu.data));
           break;
         case "cssRules":
           if (event.data.value) {
@@ -68,18 +69,11 @@ class EventHandler {
   }
 }
 class Parser {
-  static parse(obj1, props, result, parentKey = "") {
+  static parse(obj1, result) {
     for (let key in obj1) {
       if (typeof obj1[key] === "object") {
-        props[key] = {};
         if (typeof result[key] == "undefined") result[key] = {};
-        result[key]["__path"] = (parentKey.length ? parentKey + "." : "") + key;
-        result[key] = Parser.parse(
-          obj1[key],
-          props[key],
-          result[key],
-          result[key]["__path"]
-        );
+        result[key] = Parser.parse(obj1[key], result[key]);
       } else {
         set(result, key, obj1[key]);
       }
@@ -91,7 +85,7 @@ class Parser {
     let unknownPaths = {};
     for (let key in obj1) {
       if (typeof obj2[key] === "undefined") {
-        unknownPaths[key] = obj1[key];
+        unknownPaths[key] = JSON.parse(JSON.stringify(obj1[key]));
       } else if (
         typeof obj2[key] === "object" &&
         typeof obj1[key] === "object"
@@ -99,11 +93,8 @@ class Parser {
         let unknownInnerPaths = Parser.compare(obj1[key], obj2[key]);
         if (Object.keys(unknownInnerPaths).length > 0)
           unknownPaths[key] = unknownInnerPaths;
-      } else {
-        unknownPaths[key] = obj1[key];
       }
     }
-
     return unknownPaths;
   }
 }
@@ -142,20 +133,20 @@ class Contenu {
   static data = {};
   static props = {};
   static res = {};
+  static serverUrl;
   loaded = false;
   iFrame = null;
   key = "/";
   static handler = null;
   fetchDataAddress = "";
   constructor(options) {
-    this.serverUrl = options.serverAddress;
+    Contenu.serverUrl = options.serverAddress;
     this.fetchDataAddress = options.fetchDataAddress || "/api/data";
     Contenu.handler = new EventHandler();
     Contenu.handler.initializeMessageListener();
     return this;
   }
   start() {
-    Contenu.props = {};
     Contenu.data = {};
     observable(Contenu.data);
     if (this.iFrame) this.iFrame.remove();
@@ -164,7 +155,6 @@ class Contenu {
   }
   setKey(key) {
     this.key = key;
-    Contenu.props = {};
     Contenu.data = {};
     observable(Contenu.data);
     if (this.iFrame) this.iFrame.remove();
@@ -172,16 +162,15 @@ class Contenu {
     this.initIFrame(this.key);
   }
   initIFrame(key) {
-    this.iFrame = new IFrameInitializer(this.serverUrl, key);
+    this.iFrame = new IFrameInitializer(Contenu.serverUrl, key);
     this.iFrame.mount(document.getElementsByTagName("body")[0]);
   }
   fetchDataFromServer() {
-    console.log(this.serverUrl + this.fetchDataAddress + "?key=" + this.key);
-    fetch(this.serverUrl + this.fetchDataAddress + "?key=" + this.key)
+    fetch(Contenu.serverUrl + this.fetchDataAddress + "?key=" + this.key)
       .then(response => response.json())
       .then(res => {
-        Parser.parse(res.content, Contenu.props, Contenu.data);
         Contenu.res = res.content;
+        Parser.parse(res.content, Contenu.data);
         this.loaded = true;
       })
       .catch(error =>
@@ -189,92 +178,26 @@ class Contenu {
       );
   }
 }
-let parse = data => {
-  let res = {};
-  for (let key in data) {
-    if (key !== "__value" && key !== "__path") {
-      if (typeof data[key] === "object") {
-        res[key] = parse(data[key]);
-      } else res[key] = data[key];
-    }
-    if (typeof res[key] === "object") {
-      if (
-        Object.keys(res[key]).length == 1 &&
-        typeof res.parse === "function"
-      ) {
-        res[key] = data[key].__value;
+let finder = path => {
+  let pathArr = path.split(".");
+  if (pathArr.length > 0) {
+    let i = 0;
+    let obj = Contenu.data;
+    while (i != pathArr.length) {
+      if (typeof obj[pathArr[i]] === "undefined") {
+        set(obj, pathArr[i], {});
       }
+      obj = obj[pathArr[i]];
+      i++;
     }
+    //empty object
+    if (typeof obj === "object" && Object.keys(obj).length == 0) obj = "";
+    // image format
+    if (obj.__type == "image") {
+      return Contenu.serverUrl + "/api/files/" + obj.__value;
+    }
+    return obj;
   }
-  if (Object.keys(res).length == 0) {
-    res = "";
-  }
-  return res;
-};
-let makeProxy = (data, props) => {
-  return new Proxy(data, {
-    get: (target, prop) => {
-      if (typeof props === "undefined") props = {};
-      if (typeof target.__path === "undefined") {
-        target.__path = "";
-      }
-      try {
-        if (
-          typeof props[prop] === "undefined" &&
-          typeof target[prop] == "object"
-        ) {
-          // console.log("new Prop", target.__path + "." + prop);
-          props[prop] = {};
-        }
-        return makeProxy(target[prop], props[prop]);
-      } catch (err) {
-        if (prop === "__value") {
-          if (typeof target.__value !== "undefined") {
-            return target.__value;
-          }
-          if (typeof target === "object" && Object.keys(target).length == 0)
-            return null;
-          return target;
-        }
-        if (typeof target[prop] === "string") {
-          delete target.__value;
-          set(target, prop, {
-            __value: target[prop],
-            __path: target.__path + "." + prop,
-            parse: () => {
-              return target[prop].__value
-                ? target[prop].__value
-                : Object.keys(parse(target[prop])).length == 1
-                ? ""
-                : parse(target[prop]);
-            }
-          });
-        } else {
-          if (typeof props[prop] === "undefined") {
-            // request for new field
-
-            props[prop] = {};
-            delete target.__value;
-            Contenu.handler.requestNewFields(
-              Parser.compare(Contenu.props, Contenu.res)
-            );
-          }
-          set(target, prop, {
-            __value: "",
-            __path: target.__path + "." + prop,
-            parse: () => {
-              return target[prop].__value
-                ? target[prop].__value
-                : Object.keys(parse(target[prop])).length == 1
-                ? ""
-                : parse(target[prop]);
-            }
-          });
-        }
-        return makeProxy(target[prop], props[prop]);
-      }
-    }
-  });
 };
 var set;
 var observable;
@@ -287,12 +210,12 @@ export default {
     if (options.router) {
       options.router.beforeEach((to, from, next) => {
         window.$contenu.setKey(to.path);
-        Vue.prototype.$contenu = makeProxy(Contenu.data, Contenu.props);
+        Vue.prototype.$contenu = finder;
         next();
       });
     } else {
       window.$contenu.start();
-      Vue.prototype.$contenu = makeProxy(Contenu.data, Contenu.props);
+      Vue.prototype.$contenu = finder;
     }
   }
 };
